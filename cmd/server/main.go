@@ -1,15 +1,16 @@
 package main
 
 import (
-	amqp "github.com/rabbitmq/amqp091-go"
 	"fmt"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"os"
 
+	"github.com/voylento/learn-pub-sub-starter/internal/gamelogic"
 	ps "github.com/voylento/learn-pub-sub-starter/internal/pubsub"
 	"github.com/voylento/learn-pub-sub-starter/internal/routing"
-	"github.com/voylento/learn-pub-sub-starter/internal/gamelogic"
 )
 
+// learn-pub-sub-starter/cmd/server/main.go
 func main() {
 	const cs = "amqp://guest:guest@localhost:5672/"
 	conn, err := amqp.Dial(cs)
@@ -21,6 +22,25 @@ func main() {
 
 	fmt.Println("Connection successful. Starting Peril server...")
 
+	// Create queue to notify clients when game is paused
+	// Note: consider creating just the exchange in server and
+	// creating the channel in the client
+	_, _, err = ps.DeclareAndBind(
+		conn,                       // *amqp.Connection
+		routing.ExchangePerilTopic, // exchange
+		routing.GameLogSlug,        // queue name
+		routing.GameLogSlug+".*",   // key
+		ps.Durable)
+	if err != nil {
+		fmt.Printf("Error calling DeclareAndBind: %v\n", err)
+		os.Exit(1)
+	}
+
+	subscribeToGameLogMessages(conn)
+
+	gamelogic.PrintServerHelp()
+
+	// get channel for use when publishing pause message
 	ch, err := conn.Channel()
 	if err != nil {
 		fmt.Printf("Error: attemtp to open channel failed: %v\n", err)
@@ -28,14 +48,6 @@ func main() {
 	}
 	defer ch.Close()
 
-	_, _, err = ps.DeclareAndBind(conn, "peril_topic", "game_logs", "game_logs.*", ps.Durable)
-	if err != nil {
-		fmt.Printf("Error calling DeclareAndBind: %v\n", err)
-		os.Exit(1)
-	}
-
-	gamelogic.PrintServerHelp()
-	
 	for {
 		userInput := gamelogic.GetInput()
 		if len(userInput) == 0 {
@@ -77,5 +89,31 @@ func main() {
 			fmt.Printf("Unknown command: %s\n", userInput[0])
 			gamelogic.PrintServerHelp()
 		}
+	}
+}
+
+func subscribeToGameLogMessages(conn *amqp.Connection) {
+	_, _, err := ps.DeclareAndBind(
+		conn,
+		routing.ExchangePerilTopic,
+		routing.GameLogSlug,
+		routing.GameLogSlug+".*",
+		ps.Durable,
+	)
+	if err != nil {
+		fmt.Printf("Error creating queue for game logs. Game logs will not be available: %v\n", err)
+		return
+	}
+
+	err = ps.SubscribeGob(
+		conn,
+		routing.ExchangePerilTopic,
+		routing.GameLogSlug,
+		routing.GameLogSlug+".*",
+		ps.Durable,
+		handlerGameLog(conn),
+	)
+	if err != nil {
+		fmt.Printf("Error subscribing to game log messages: %v\n", err)
 	}
 }

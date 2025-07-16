@@ -1,10 +1,10 @@
 package pubsub
 
 import (
-	amqp "github.com/rabbitmq/amqp091-go"
 	"context"
 	"encoding/json"
 	"fmt"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
@@ -14,15 +14,14 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	}
 
 	return ch.PublishWithContext(
-		context.Background(), 
+		context.Background(),
 		exchange,
 		key,
-		false,	// mandatory
-		false,	// immediate
+		false, // mandatory
+		false, // immediate
 		amqp.Publishing{
 			ContentType: "application/json",
-			Body:				 jsonData,
+			Body:        jsonData,
 		},
 	)
 }
-

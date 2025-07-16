@@ -1,11 +1,12 @@
 package pubsub
 
 import (
-	amqp "github.com/rabbitmq/amqp091-go"
 	"fmt"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type SimpleQueueType int
+
 const (
 	Durable SimpleQueueType = iota
 	Transient
@@ -25,7 +26,17 @@ func DeclareAndBind(
 	}
 
 	isTransient := queueType == Transient
-	q, err := ch.QueueDeclare(queueName, !isTransient, isTransient, isTransient, false, nil) 
+
+	q, err := ch.QueueDeclare(
+		queueName,
+		!isTransient,
+		isTransient,
+		isTransient,
+		false,
+		amqp.Table{
+			"x-dead-letter-exchange": "peril_dlx",
+		},
+	)
 	if err != nil {
 		fmt.Printf("Error creating queue: %v\n", err)
 		return nil, amqp.Queue{}, err

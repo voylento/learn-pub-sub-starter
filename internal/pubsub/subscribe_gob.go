@@ -1,21 +1,14 @@
 package pubsub
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/gob"
 	"fmt"
-	"log"
-
 	amqp "github.com/rabbitmq/amqp091-go"
+	"log"
 )
 
-type AckType int
-const (
-	Ack	AckType = iota
-	NackRequeue 
-	NackDiscard
-)
-
-func SubscribeJSON[T any](
+func SubscribeGob[T any](
 	conn *amqp.Connection,
 	exchange,
 	queueName,
@@ -29,15 +22,16 @@ func SubscribeJSON[T any](
 		return err
 	}
 
+	ch.Qos(10, 0, false)
+
 	delivery_ch, err := ch.Consume(queueName, "", false, false, false, false, nil)
 
 	go func(ch <-chan amqp.Delivery) {
 		for delivery := range ch {
 			var payload T
-
-			// Unmarshal the JSON bytes into the generic type T
-			if err := json.Unmarshal(delivery.Body, &payload); err != nil {
-				log.Printf("Failed to unmarshal message: %v", err)
+			dec := gob.NewDecoder(bytes.NewReader(delivery.Body))
+			if err = dec.Decode(&payload); err != nil {
+				log.Printf("Failed to unmashal gob: %v", err)
 				delivery.Nack(false, false)
 				continue
 			}
